@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>peel demo</title>
+<style>
+  @font-face {
+    font-family: "Phantom Sans";
+    src: url("https://assets.hackclub.com/fonts/Phantom_Sans_0.7/BoldItalic.woff2") format("woff2"),
+         url("https://assets.hackclub.com/fonts/Phantom_Sans_0.7/BoldItalic.woff")  format("woff");
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Phantom Sans";
+    src: url("https://assets.hackclub.com/fonts/Phantom_Sans_0.7/Bold.woff2") format("woff2"),
+         url("https://assets.hackclub.com/fonts/Phantom_Sans_0.7/Bold.woff")  format("woff");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+  :root {
+    --bg:         #141419;
+    --fg:         #777;
+    --grid-a:     rgba(255,255,255,0.018);
+    --grid-b:     rgba(255,255,255,0.04);
+    --drop-edge:  #2c2c36;
+    --label-bg:   #1d1d24;
+    --label-bg-h: #252530;
+    --label-edge: #3a3a46;
+    --label-fg:   #ccc;
+    --toggle-bg:  #1d1d24;
+    --toggle-fg:  #cfcfd6;
+    --toggle-edge:#32323c;
+  }
+  body.light {
+    --bg:         #f6f1e4;
+    --fg:         #766a52;
+    --grid-a:     rgba(84, 62, 30, 0.035);
+    --grid-b:     rgba(84, 62, 30, 0.075);
+    --drop-edge:  #d9cfb4;
+    --label-bg:   #fffdf6;
+    --label-bg-h: #f0e9d4;
+    --label-edge: #d2c6a8;
+    --label-fg:   #33281a;
+    --toggle-bg:  #fffdf6;
+    --toggle-fg:  #33281a;
+    --toggle-edge:#d2c6a8;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+               font-family: -apple-system, Segoe UI, sans-serif; color: var(--fg);
+               cursor: none;
+               touch-action: none;
+               -webkit-user-select: none; user-select: none;
+               background-color: var(--bg);
+               background-image:
+                 linear-gradient(to right,
+                   transparent 0,
+                   var(--grid-a) 1px,
+                   var(--grid-b) 2px,
+                   var(--grid-a) 3px,
+                   transparent 4px),
+                 linear-gradient(to bottom,
+                   transparent 0,
+                   var(--grid-a) 1px,
+                   var(--grid-b) 2px,
+                   var(--grid-a) 3px,
+                   transparent 4px);
+               background-size: 48px 48px;
+               transition: background-color 0.25s ease, color 0.25s ease; }
+  /* stickers render above all the html UI. The canvas itself is
+     pointer-events: none so clicks on the text/form go through; the
+     pointerdown listener below raycasts against the scene first and
+     only swallows the event when it actually lands on a sticker. */
+  #app { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+  #theme-toggle { position: fixed; top: 18px; right: 18px; width: 36px; height: 36px;
+                  border-radius: 50%; border: 1px solid var(--toggle-edge);
+                  background: var(--toggle-bg); color: var(--toggle-fg);
+                  font-size: 18px; line-height: 1; cursor: pointer;
+                  display: flex; align-items: center; justify-content: center;
+                  padding: 0; z-index: 20;
+                  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+                  font-family: "Segoe UI Symbol", "Apple Symbols", sans-serif; }
+  #theme-toggle { cursor: none; }
+  #theme-toggle:hover { background: var(--label-bg-h); }
+  canvas { display: block; }
+  #title { position: fixed; top: 42%; left: 50%; transform: translate(-50%, -50%);
+           font-family: "Phantom Sans", Arial, Helvetica, sans-serif; font-weight: 700; font-style: italic;
+           color: #f1ede3; -webkit-text-stroke: 2.5px #000;
+           paint-order: stroke fill;
+           pointer-events: none; z-index: 1;
+           text-align: right; line-height: 0.92;
+           user-select: none; }
+  #title .main { font-size: 112px; display: block; letter-spacing: -1px; }
+  #title .sub  { font-size: 18px; display: block; margin-top: 4px; -webkit-text-stroke: 1.25px #000; }
+  /* form is sized to the grid (48px cells): 8 cells wide × 1 cell tall.
+     input and button are two separate pills with a 16px gap between them. */
+  #signup { position: fixed; display: flex; z-index: 5;
+            width: 384px; height: 48px; box-sizing: border-box; gap: 16px;
+            font-family: -apple-system, Segoe UI, sans-serif; }
+  #signup input {
+    flex: 1; height: 100%; box-sizing: border-box;
+    border: 1px solid var(--label-edge);
+    border-radius: 999px;
+    padding: 0 22px;
+    background: var(--label-bg); color: var(--label-fg);
+    font-family: inherit; font-size: 14px;
+    transition: border-color 0.15s ease, background 0.2s ease;
+  }
+  #signup input::placeholder { color: var(--fg); opacity: 0.6; }
+  #signup input:focus { outline: none; border-color: var(--toggle-fg); }
+  #signup button {
+    width: 96px; height: 100%; box-sizing: border-box;
+    border: 1px solid var(--label-edge);
+    border-radius: 999px;
+    padding: 0;
+    background: var(--label-bg); color: var(--label-fg);
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  #signup button:hover { background: var(--label-bg-h); }
+  #signup.sent button { background: var(--label-bg-h); }
+  #sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 280px;
+             background: rgba(20, 20, 25, 0.92);
+             border-right: 1px solid var(--label-edge);
+             backdrop-filter: blur(8px);
+             display: flex; flex-direction: column; z-index: 30;
+             font-family: -apple-system, Segoe UI, sans-serif; color: var(--label-fg);
+             transition: transform 0.25s ease; }
+  body.light #sidebar { background: rgba(232, 222, 198, 0.94); }
+  body.sidebar-collapsed #sidebar { transform: translateX(-100%); }
+  #sidebar-toggle { position: fixed; top: 14px; left: 294px; z-index: 31;
+                    width: 30px; height: 30px; border-radius: 6px;
+                    border: 1px solid var(--label-edge);
+                    background: var(--label-bg); color: var(--label-fg);
+                    font-size: 16px; line-height: 1; cursor: none;
+                    display: flex; align-items: center; justify-content: center;
+                    padding: 0;
+                    transition: left 0.25s ease, background 0.2s ease; }
+  #sidebar-toggle:hover { background: var(--label-bg-h); }
+  body.sidebar-collapsed #sidebar-toggle { left: 14px; }
+  body.touch #sidebar-toggle { cursor: pointer; }
+  #sidebar header { padding: 14px 14px 10px; border-bottom: 1px solid var(--label-edge);
+                    display: flex; flex-direction: column; gap: 8px; }
+  #sidebar h1 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+                text-transform: uppercase; opacity: 0.7;
+                display: flex; justify-content: space-between; align-items: baseline; }
+  #sticker-count { font-size: 11px; font-weight: 500; opacity: 0.6; letter-spacing: 0; }
+  #sticker-search { width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px;
+                    border-radius: 6px; border: 1px solid var(--label-edge);
+                    background: var(--label-bg); color: var(--label-fg);
+                    font-family: inherit; font-size: 12px; }
+  #sticker-search:focus { outline: none; border-color: var(--toggle-fg); }
+  #sticker-list { flex: 1; overflow-y: auto; padding: 6px 6px 14px;
+                  touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+  #sticker-search { touch-action: manipulation; }
+  body.touch { cursor: auto; }
+  body.touch #fake-cursor { display: none !important; }
+  body.touch #theme-toggle { cursor: pointer; }
+  @media (max-width: 720px), (pointer: coarse) {
+    #sidebar { width: min(82vw, 320px); }
+    #sidebar header { padding: 16px 14px 12px; gap: 10px; }
+    #sidebar h1 { font-size: 15px; }
+    #sticker-count { font-size: 13px; }
+    #sticker-search { height: 38px; font-size: 15px; }
+    .sticker-item { padding: 11px 10px; font-size: 15px; gap: 10px; }
+    .sticker-item input { width: 18px; height: 18px; }
+    .sticker-item .meta { font-size: 12px; max-width: 100px; }
+    #sidebar-toggle { width: 40px; height: 40px; font-size: 22px;
+                      top: 10px; left: calc(min(82vw, 320px) + 10px); }
+    body.sidebar-collapsed #sidebar-toggle { left: 10px; }
+    #theme-toggle { width: 40px; height: 40px; top: 10px; right: 10px; }
+  }
+  #sticker-list::-webkit-scrollbar { width: 8px; }
+  #sticker-list::-webkit-scrollbar-thumb { background: var(--label-edge); border-radius: 4px; }
+  .sticker-item { display: grid; grid-template-columns: 18px 1fr auto; align-items: center;
+                  gap: 8px; padding: 6px 8px; border-radius: 6px;
+                  font-size: 12px; line-height: 1.2; }
+  .sticker-item:hover { background: var(--label-bg-h); }
+  .sticker-item input { margin: 0; accent-color: #e0d6b8; }
+  .sticker-item .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sticker-item .meta { font-size: 10px; opacity: 0.55; white-space: nowrap;
+                        overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
+  :root { --cursor-fill: #f7e9c7; --cursor-outline: #0b0b10; }
+  body.light { --cursor-fill: #fffdf6; --cursor-outline: #2a1f10; }
+  #fake-cursor { position: fixed; left: 0; top: 0;
+                 width: 34px; height: 34px;
+                 /* Phosphor hand fingertips are at ~28% down the viewBox,
+                    so anchor there and the grip lands on the peel tip. */
+                 transform: translate(-50%, -28%);
+                 pointer-events: none; user-select: none;
+                 display: none; z-index: 100;
+                 color: var(--cursor-fill);
+                 filter: drop-shadow( 1.2px 0 0 var(--cursor-outline))
+                         drop-shadow(-1.2px 0 0 var(--cursor-outline))
+                         drop-shadow( 0  1.2px 0 var(--cursor-outline))
+                         drop-shadow( 0 -1.2px 0 var(--cursor-outline))
+                         drop-shadow( 0  2px 2.5px rgba(0,0,0,0.35)); }
+  #fake-cursor.visible { display: block; }
+  #fake-cursor svg { width: 100%; height: 100%; display: none; }
+  #fake-cursor.open  .hand-open  { display: block; }
+  #fake-cursor.fist  .hand-fist  { display: block; }
+  #fake-cursor.arrow .hand-arrow { display: block; }
+  /* classic arrow hotspot is top-left, not center-top */
+  #fake-cursor.arrow { transform: translate(-8%, -6%); }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<aside id="sidebar">
+  <header>
+    <h1>Stickers <span id="sticker-count">0/0</span></h1>
+    <input id="sticker-search" type="search" placeholder="search name / event / artist" autocomplete="off">
+  </header>
+  <div id="sticker-list"></div>
+</aside>
+<button id="sidebar-toggle" type="button" aria-label="toggle sidebar">‹</button>
+
+<!--
+<div id="title">
+  <span class="main">stickers</span>
+  <span class="sub">Hack Club</span>
+</div>
+
+<form id="signup" autocomplete="off">
+  <input type="email" name="email" placeholder="your@email.com" required>
+  <button type="submit">sign up</button>
+</form>
+-->
+
+<button id="theme-toggle" type="button" aria-label="toggle theme">◐</button>
+
+<div id="fake-cursor" aria-hidden="true">
+  <!-- Phosphor icons (MIT): hand-palm-fill + hand-grabbing-fill. Both are
+       4-digit, no-thumb shapes so the open→grab transition stays visually
+       consistent. -->
+  <svg class="hand-open" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor">
+    <path d="M216,104v48a88,88,0,0,1-176,0V64a16,16,0,0,1,32,0v56a8,8,0,0,0,16,0V32a16,16,0,0,1,32,0v80a8,8,0,0,0,16,0V48a16,16,0,0,1,32,0v80.67A48.08,48.08,0,0,0,128,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V104a16,16,0,0,1,32,0Z"/>
+  </svg>
+  <svg class="hand-fist" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor">
+    <path d="M216,104v48a88,88,0,0,1-176,0V136a16,16,0,0,1,32,0v8a8,8,0,0,0,16,0V88a16,16,0,0,1,32,0v16a8,8,0,0,0,16,0V88a16,16,0,0,1,32,0v16a8,8,0,0,0,16,0,16,16,0,0,1,32,0Z"/>
+  </svg>
+  <svg class="hand-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor">
+    <path d="M220.49,207.8,207.8,220.49a12,12,0,0,1-17,0l-56.57-56.57L115,214.08l-.13.33A15.84,15.84,0,0,1,100.26,224l-.78,0a15.82,15.82,0,0,1-14.41-11L32.8,52.92A15.95,15.95,0,0,1,52.92,32.8L213,85.07a16,16,0,0,1,1.41,29.8l-.33.13-50.16,19.27,56.57,56.56A12,12,0,0,1,220.49,207.8Z"/>
+  </svg>
+</div>
+
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script>
+(function () {
+  const app = document.getElementById('app');
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  camera.position.z = 5;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  app.appendChild(renderer.domElement);
+
+  // --- page-curl vertex shader -------------------------------------------
+  // The plane is tessellated. A hinge line sweeps across it; everything
+  // ahead of the hinge wraps around a cylinder of radius uRadius, which
+  // gives the classic paper-curl silhouette. A light + a back texture
+  // tint sell the 3D.
+  const vert = `
+    uniform float uCurl;
+    uniform float uSpread;
+    uniform float uRadius;
+    uniform vec2  uHingeDir;
+    uniform float uPlaneHalf;
+    uniform float uTargetZ;
+    uniform float uThickness;
+
+    varying vec2  vUv;
+    varying float vSide;
+    varying vec3  vNormalW;
+
+    void main() {
+      vUv = uv;
+      vec3 p = position;
+      vec3 n = vec3(0.0, 0.0, 1.0);
+
+      // --- phase 1: corner curl ------------------------------------------
+      // The hinge sweeps a small distance into the sticker from the grabbed
+      // corner. Vertices past the hinge wrap around a cylinder.
+      float hingeX = mix(uPlaneHalf, -uPlaneHalf, uCurl);
+      float along  = dot(p.xy, uHingeDir) - hingeX;
+      float isWrapped = step(0.0, along);
+
+      if (along > 0.0) {
+        float theta = along / uRadius;
+        float sinT = sin(theta);
+        float cosT = cos(theta);
+
+        float newAlong = hingeX + uRadius * sinT;
+        float newZ     = uRadius - uRadius * cosT;
+
+        vec2 perp = p.xy - dot(p.xy, uHingeDir) * uHingeDir;
+        vec2 xy   = perp + newAlong * uHingeDir;
+        p = vec3(xy, newZ);
+
+        n = vec3(-sinT * uHingeDir.x, -sinT * uHingeDir.y, cosT);
+      }
+
+      // --- phase 2: lift spread ------------------------------------------
+      // Unwrapped vertices rise from the surface up to uTargetZ, staggered
+      // by their position along the peel direction so the lift sweeps
+      // across the sticker. Wrapped vertices (the curled corner) keep
+      // their curl shape and just translate upward as a unit — that way
+      // the peel stays visibly curled back at the end of the animation
+      // instead of flattening out.
+      float uAlong = (dot(position.xy, uHingeDir) / uPlaneHalf + 1.0) * 0.5;
+      float blendStart = (1.0 - uAlong) * 0.6;
+      float blend = smoothstep(blendStart, blendStart + 0.4, uSpread);
+
+      vec3 flatP      = vec3(position.xy, uTargetZ);
+      vec3 unwrappedP = mix(p, flatP, blend);
+      vec3 wrappedP   = p + vec3(0.0, 0.0, blend * uTargetZ);
+      p = mix(unwrappedP, wrappedP, isWrapped);
+
+      vSide = n.z > 0.0 ? 1.0 : -1.0;
+
+      vNormalW = normalize((modelMatrix * vec4(n, 0.0)).xyz);
+
+      // Thickness offset — back mesh renders with uThickness > 0 so its
+      // vertices are pushed along the -normal direction, sitting just
+      // behind the front surface.
+      p -= n * uThickness;
+
+      // Fake 3/4 view: shift lifted vertices upward in screen-Y so the
+      // orthographic camera actually shows the Z-lift.
+      p.y += p.z * 0.45;
+
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+    }
+  `;
+
+  const frag = `
+    uniform sampler2D uMap;
+    uniform vec3  uBackColor;
+    uniform vec3  uLightDir;
+
+    varying vec2  vUv;
+    varying float vSide;
+    varying vec3  vNormalW;
+
+    void main() {
+      // Front-only rendering: when the curl wraps past 90° this fragment
+      // is facing away from the camera, so let the back mesh show
+      // through instead of painting a stand-in colour on the front.
+      if (vSide < 0.0) discard;
+      vec4 front = texture2D(uMap, vUv);
+      vec3 col = front.rgb;
+      float a  = front.a;
+
+      // directional light. Flip the normal on back-facing fragments so the
+      // underside of the curl gets a proper cylindrical light falloff
+      // instead of clamping flat to zero.
+      vec3 N = normalize(vNormalW);
+      if (vSide < 0.0) N = -N;
+      float ndl = clamp(dot(N, normalize(uLightDir)), 0.0, 1.0);
+      float lighting = 0.45 + 0.65 * ndl;
+      col *= lighting;
+
+      gl_FragColor = vec4(col, a);
+    }
+  `;
+
+  // --- state -------------------------------------------------------------
+  const stickers = [];        // array of { mesh, backMesh }
+  let activeSticker = null;   // whichever sticker is currently being animated
+  let topOrder = 10;          // bumped every pickup so the last-touched sticker stays on top
+  let shadowMesh = null;
+
+  // Two sequenced animation tracks that match how a sticker comes off a
+  // surface:
+  //   curl   — the corner is pinched and peels away from the surface
+  //   spread — a wave of lifting that sweeps from the peeled corner to
+  //            the opposite corner, ending with the whole sticker at a
+  //            uniformly elevated height, ready to drag.
+  let curl = 0;
+  let spread = 0;
+  const CURL_MAX = 0.62;
+  const curlAnim   = { from: 0, to: 0, start: -1, duration: 500, onDone: null };
+  const spreadAnim = { from: 0, to: 0, start: -1, duration: 650, onDone: null };
+
+  function startAnim(anim, fromVal, toVal, duration, delay) {
+    anim.from = fromVal;
+    anim.to = toVal;
+    anim.start = performance.now() + (delay || 0);
+    anim.duration = duration;
+    if (Math.abs(fromVal - toVal) < 0.0005) {
+      anim.start = -1;
+    }
+  }
+  function animateCurl(to, duration, delay)   { startAnim(curlAnim,   curl,   to, duration, delay); }
+  function animateSpread(to, duration, delay) { startAnim(spreadAnim, spread, to, duration, delay); }
+
+  // ease-in-out cubic — soft start, soft finish
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+  function smoothstep01(x, a, b) {
+    const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  }
+  // phase: 'idle' → 'picking-up' → 'held' → 'putting-down' → 'idle'
+  // while in 'putting-down', pointer input is ignored so the animation runs
+  // atomically to completion.
+  let phase = 'idle';
+  // timestamp of the last cursor movement while in 'held' — sticker
+  // auto-drops after HELD_AUTO_MS with no movement so it doesn't sit
+  // peeled forever if the user forgets about it.
+  let heldSince = -1;
+  const HELD_AUTO_MS = 8000;
+  function animationsIdle() { return curlAnim.start < 0 && spreadAnim.start < 0; }
+  const meshAnchor   = new THREE.Vector2(0, 0);
+  const targetAnchor = new THREE.Vector2(0, 0);
+  // Local offset (in mesh coords, at curl=CURL_MAX / spread=1, already
+  // scaled by pickedScale) from the sticker's center to its visible peel
+  // tip — used while held so the tip tracks the user's pointer.
+  const heldGrabOffset = new THREE.Vector2(0, 0);
+  // World-space offset between the peel tip and the real pointer at the
+  // moment we entered 'held'. Adding this to live pointerWorld preserves
+  // the relative placement, so the sticker never jolts when picked up.
+  const heldWorldDelta = new THREE.Vector2(0, 0);
+  // Screen-space offset between the click point and the peel corner at
+  // curl=0. Used during 'picking-up' to smoothly blend the fake cursor
+  // from where the user clicked to where the peel tip actually is.
+  const pickupClickDelta = { x: 0, y: 0 };
+
+  function createSticker(tex, baseH) {
+    tex.encoding = THREE.sRGBEncoding;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+
+    const img = tex.image;
+    const aspect = img.width / img.height;
+    const h = baseH;
+    const w = h * aspect;
+
+    const geom = new THREE.PlaneGeometry(w, h, 140, 140);
+
+    // hinge is perpendicular to this vector; (1,-1) means it sweeps from
+    // the bottom-right corner toward the top-left
+    const hingeDir = new THREE.Vector2(1, -1).normalize();
+    const planeHalf = (w + h) / (2 * Math.SQRT2);
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap:       { value: tex },
+        uCurl:      { value: 0 },
+        uSpread:    { value: 0 },
+        // tight radius so the peeled corner wraps well past vertical and
+        // angles back toward the opposite corner instead of just lifting
+        uRadius:    { value: Math.hypot(w, h) * 0.22 },
+        uHingeDir:  { value: hingeDir },
+        uPlaneHalf: { value: planeHalf },
+        uTargetZ:   { value: Math.max(w, h) * 0.4 },
+        uThickness: { value: 0.0 },
+        uBackColor: { value: new THREE.Color('#e0d6b8') },
+        uLightDir:  { value: new THREE.Vector3(0.25, 0.55, 1.0) },
+      },
+      vertexShader: vert,
+      fragmentShader: frag,
+      side: THREE.DoubleSide,
+      transparent: true,
+    });
+
+    const mesh = new THREE.Mesh(geom, mat);
+    scene.add(mesh);
+
+    // --- back face -- gives the sticker a little visible thickness.
+    // Same geometry, same vertex shader (so it curls/spreads in lock-step
+    // with the front), but offset along the surface normal by uThickness
+    // so it sits a hair behind the front. The back fragment shader just
+    // outputs a plain lit paper colour masked by the image alpha.
+    const backFrag = `
+      uniform sampler2D uMap;
+      uniform vec3 uLightDir;
+      varying vec2 vUv;
+      varying vec3 vNormalW;
+      void main() {
+        float a = texture2D(uMap, vUv).a;
+        if (a < 0.01) discard;
+        vec3 N = -normalize(vNormalW);
+        float ndl = clamp(dot(N, normalize(uLightDir)), 0.0, 1.0);
+        float lighting = 0.5 + 0.45 * ndl;
+        gl_FragColor = vec4(vec3(0.86) * lighting, a);
+      }
+    `;
+    const backMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap:       { value: tex },
+        uCurl:      { value: 0 },
+        uSpread:    { value: 0 },
+        uRadius:    { value: Math.hypot(w, h) * 0.22 },
+        uHingeDir:  { value: hingeDir },
+        uPlaneHalf: { value: planeHalf },
+        uTargetZ:   { value: Math.max(w, h) * 0.4 },
+        uThickness: { value: Math.max(w, h) * 0.025 },
+        uBackColor: { value: new THREE.Color('#e0d6b8') },
+        uLightDir:  { value: new THREE.Vector3(0.25, 0.55, 1.0) },
+      },
+      vertexShader: vert,
+      fragmentShader: backFrag,
+      side: THREE.DoubleSide,
+      transparent: true,
+    });
+    const backMesh = new THREE.Mesh(geom, backMat);
+    backMesh.renderOrder = -1; // drawn before the front
+    scene.add(backMesh);
+
+    return { mesh, backMesh, w, h };
+  }
+
+  function spawnSticker(tex, id) {
+    const baseH = 0.34 + Math.random() * 0.16;
+    const sticker = createSticker(tex, baseH);
+    sticker.id = id || null;
+    // Scatter stickers anywhere on screen, but avoid the area hidden by
+    // the sidebar so the user can actually see them.
+    const aspect = window.innerWidth / window.innerHeight;
+    const sideRight = document.getElementById('sidebar').getBoundingClientRect().right;
+    const sideNdc = (sideRight / window.innerWidth) * 2 - 1;
+    const worldLeftEdge = Math.max(-aspect * 0.85, sideNdc * aspect + sticker.w * 0.6);
+    const worldRightEdge = aspect * 0.85;
+    const x = worldLeftEdge + Math.random() * Math.max(0, worldRightEdge - worldLeftEdge);
+    const y = (Math.random() * 2 - 1) * 0.8;
+    sticker.mesh.position.set(x, y, 0);
+    sticker.backMesh.position.set(x, y, 0);
+    stickers.push(sticker);
+    return sticker;
+  }
+
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = 'anonymous';
+
+  // Sticker catalog from the Hack Club stickers API. Each entry:
+  //   { data, sticker, loading }
+  // `data` is the raw API record, `sticker` is the spawned mesh pair when
+  // present, `loading` guards against double-loads while a texture is in
+  // flight.
+  const catalog = new Map();
+
+  // The Hack Club CDN returns `Access-Control-Allow-Origin: *` twice in
+  // some responses, which browsers reject as invalid. Route requests
+  // through /api/proxy (Vercel serverless function in production,
+  // serve.py locally) which refetches and re-emits clean CORS headers.
+  function proxiedUrl(remote) {
+    return '/api/proxy?url=' + encodeURIComponent(remote);
+  }
+
+  function enableSticker(id) {
+    const entry = catalog.get(id);
+    if (!entry || entry.sticker || entry.loading) return;
+    entry.loading = true;
+    loader.load(
+      proxiedUrl(entry.data.image),
+      (tex) => {
+        entry.loading = false;
+        if (!catalog.has(id) || catalog.get(id).sticker) return;
+        entry.sticker = spawnSticker(tex, id);
+      },
+      undefined,
+      (err) => {
+        entry.loading = false;
+        console.warn('Failed to load sticker', entry.data.name, err);
+      }
+    );
+  }
+
+  function disableSticker(id) {
+    const entry = catalog.get(id);
+    if (!entry || !entry.sticker) return;
+    const s = entry.sticker;
+    if (activeSticker === s) {
+      // mid-interaction — abort cleanly
+      activeSticker = null;
+      phase = 'idle';
+      curl = 0;
+      spread = 0;
+      curlAnim.start = -1;
+      spreadAnim.start = -1;
+      setFakeCursor('open');
+    }
+    scene.remove(s.mesh);
+    scene.remove(s.backMesh);
+    const tex = s.mesh.material.uniforms.uMap.value;
+    s.mesh.geometry.dispose();
+    s.mesh.material.dispose();
+    s.backMesh.material.dispose();
+    if (tex && tex.dispose) tex.dispose();
+    const idx = stickers.indexOf(s);
+    if (idx >= 0) stickers.splice(idx, 1);
+    entry.sticker = null;
+  }
+
+  async function initCatalog() {
+    let data;
+    try {
+      const res = await fetch('./stickers.json');
+      const json = await res.json();
+      data = json.props.stickers;
+    } catch (err) {
+      console.error('Failed to load stickers.json', err);
+      return;
+    }
+    data.sort((a, b) => a.name.localeCompare(b.name));
+
+    const list = document.getElementById('sticker-list');
+    const search = document.getElementById('sticker-search');
+    const countEl = document.getElementById('sticker-count');
+    const frag = document.createDocumentFragment();
+
+    for (const d of data) {
+      catalog.set(d.id, { data: d, sticker: null, loading: false });
+      const label = document.createElement('label');
+      label.className = 'sticker-item';
+      label.dataset.search = (d.name + ' ' + (d.event || '') + ' ' + (d.artist || '')).toLowerCase();
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.id = d.id;
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = d.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = d.event || d.artist || '';
+      label.append(cb, name, meta);
+      frag.appendChild(label);
+      cb.addEventListener('change', () => {
+        if (cb.checked) enableSticker(d.id);
+        else disableSticker(d.id);
+        updateCount();
+      });
+    }
+    list.appendChild(frag);
+
+    function updateCount() {
+      const on = [...catalog.values()].filter((e) => e.sticker || e.loading).length;
+      countEl.textContent = `${on}/${data.length}`;
+    }
+    updateCount();
+
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      for (const el of list.querySelectorAll('.sticker-item')) {
+        el.style.display = (!q || el.dataset.search.includes(q)) ? '' : 'none';
+      }
+    });
+
+    // Default set: Inside, Macintosh, Burst.
+    const defaults = ['inside', 'macintosh', 'burst'];
+    for (const want of defaults) {
+      const d = data.find((x) => x.name.toLowerCase() === want)
+             || data.find((x) => new RegExp('\\b' + want + '\\b', 'i').test(x.name));
+      if (!d) continue;
+      const cb = list.querySelector(`input[data-id="${d.id}"]`);
+      if (cb) {
+        cb.checked = true;
+        enableSticker(d.id);
+      }
+    }
+    updateCount();
+  }
+
+  initCatalog();
+
+  // --- interaction -------------------------------------------------------
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const pointerWorld = new THREE.Vector2(0, 0);
+  const fakeCursor = document.getElementById('fake-cursor');
+
+  // Virtual cursor in screen pixels. Decoupled from the OS pointer so we
+  // can engage Pointer Lock (prevents the real mouse drifting off screen
+  // as the user drags stickers around) and keep a persistent visual
+  // cursor position across pick-up / put-down cycles.
+  let vx = Math.floor(window.innerWidth / 2);
+  let vy = Math.floor(window.innerHeight / 2);
+
+  function clampVirtual() {
+    const m = 2;
+    if (vx < m) vx = m; else if (vx > window.innerWidth - m)  vx = window.innerWidth - m;
+    if (vy < m) vy = m; else if (vy > window.innerHeight - m) vy = window.innerHeight - m;
+  }
+  function renderFakeCursor() {
+    fakeCursor.style.left = vx + 'px';
+    fakeCursor.style.top  = vy + 'px';
+  }
+  function toNdcFromScreen(sx, sy) {
+    const r = renderer.domElement.getBoundingClientRect();
+    pointer.x =  ((sx - r.left) / r.width)  * 2 - 1;
+    pointer.y = -((sy - r.top)  / r.height) * 2 + 1;
+  }
+  function worldFromScreen(sx, sy) {
+    toNdcFromScreen(sx, sy);
+    const v = new THREE.Vector3(pointer.x, pointer.y, 0).unproject(camera);
+    return new THREE.Vector2(v.x, v.y);
+  }
+  function requestLock() {
+    if (document.pointerLockElement) return;
+    const body = document.body;
+    try {
+      const p = body.requestPointerLock({ unadjustedMovement: true });
+      if (p && p.catch) p.catch(() => { try { body.requestPointerLock(); } catch (_) {} });
+    } catch (err) {
+      try { body.requestPointerLock(); } catch (_) {}
+    }
+  }
+
+  function worldToScreen(wx, wy) {
+    const v = new THREE.Vector3(wx, wy, 0).project(camera);
+    const r = renderer.domElement.getBoundingClientRect();
+    return {
+      x: ((v.x + 1) / 2) * r.width + r.left,
+      y: ((1 - v.y) / 2) * r.height + r.top,
+    };
+  }
+
+  // JS mirror of the vertex shader math for a single vertex — the peel
+  // tip (the rectangle corner furthest along the hinge direction). Returns
+  // the vertex's local mesh-space offset for the given curl/spread state
+  // so we can position the fake cursor exactly on the visible peel edge.
+  function peelCornerAt(curlV, spreadV, dx, dy, planeHalf, uRadius, uTargetZ) {
+    const hingeX = planeHalf * (1 - 2 * curlV);
+    const along = planeHalf - hingeX; // 2 * planeHalf * curlV
+    let newAlong, newZ;
+    if (along > 0) {
+      const theta = along / uRadius;
+      newAlong = hingeX + uRadius * Math.sin(theta);
+      newZ     = uRadius - uRadius * Math.cos(theta);
+    } else {
+      newAlong = planeHalf;
+      newZ = 0;
+    }
+    // uAlong for this vertex is always 1, so blendStart=0 in the shader.
+    const blend = smoothstep01(spreadV, 0, 0.4);
+    const finalZ = newZ + blend * uTargetZ;
+    return {
+      x: newAlong * dx,
+      y: newAlong * dy + finalZ * 0.45, // fake 3/4 view: p.y += p.z * 0.45
+    };
+  }
+
+  function setFakeCursor(mode) {
+    fakeCursor.classList.remove('open', 'fist', 'arrow');
+    fakeCursor.classList.add(mode);
+  }
+  // Always-on: default to the open hand, but wait for the first pointer
+  // move before making it visible so it doesn't flash at (0,0).
+  fakeCursor.classList.add('open');
+
+  const sidebarEl = document.getElementById('sidebar');
+  const themeToggleEl = document.getElementById('theme-toggle');
+  const sidebarToggleEl = document.getElementById('sidebar-toggle');
+
+  sidebarToggleEl.addEventListener('click', () => {
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    sidebarToggleEl.textContent = collapsed ? '›' : '‹';
+  });
+
+  // Raycast a screen position against all stickers, return the topmost
+  // mesh pair hit (or null).
+  function raycastStickerAt(sx, sy) {
+    if (stickers.length === 0) return null;
+    toNdcFromScreen(sx, sy);
+    raycaster.setFromCamera(pointer, camera);
+    const meshes = stickers.map((s) => s.mesh);
+    const hits = raycaster.intersectObjects(meshes);
+    if (hits.length === 0) return null;
+    hits.sort((a, b) => b.object.renderOrder - a.object.renderOrder);
+    const hitMesh = hits[0].object;
+    return stickers.find((s) => s.mesh === hitMesh) || null;
+  }
+
+  // Kick off the pickup animation on a sticker at screen coords (sx,sy).
+  function beginPickup(sticker, sx, sy) {
+    activeSticker = sticker;
+    topOrder += 2;
+    sticker.mesh.renderOrder     = topOrder;
+    sticker.backMesh.renderOrder = topOrder - 1;
+
+    meshAnchor.set(sticker.mesh.position.x, sticker.mesh.position.y);
+    targetAnchor.copy(meshAnchor); // stay put during the peel animation
+
+    const wp = worldFromScreen(sx, sy);
+    pointerWorld.set(wp.x, wp.y);
+
+    // Hinge along (click - sticker center).
+    const localX = wp.x - sticker.mesh.position.x;
+    const localY = wp.y - sticker.mesh.position.y;
+    const len = Math.hypot(localX, localY);
+    const dx = len > 0.0001 ? localX / len : 1;
+    const dy = len > 0.0001 ? localY / len : 0;
+    sticker.mesh.material.uniforms.uHingeDir.value.set(dx, dy);
+    const planeHalf = (sticker.w / 2) * Math.abs(dx) + (sticker.h / 2) * Math.abs(dy);
+    sticker.mesh.material.uniforms.uPlaneHalf.value     = planeHalf;
+    sticker.backMesh.material.uniforms.uPlaneHalf.value = planeHalf;
+
+    const cornerW = worldToScreen(
+      sticker.mesh.position.x + planeHalf * dx,
+      sticker.mesh.position.y + planeHalf * dy
+    );
+    pickupClickDelta.x = sx - cornerW.x;
+    pickupClickDelta.y = sy - cornerW.y;
+
+    phase = 'picking-up';
+    setFakeCursor('fist');
+    renderFakeCursor();
+    animateCurl(CURL_MAX, 900);
+    animateSpread(1, 1300, 360);
+  }
+
+  function beginPutdown() {
+    if (phase !== 'held' && phase !== 'picking-up') return;
+    phase = 'putting-down';
+    heldSince = -1;
+    setFakeCursor('open');
+    // Tick loop now owns vx/vy through the put-down animation: each
+    // frame it recomputes the peel tip screen position and drives the
+    // fake cursor there, so the cursor rides the peel edge down to its
+    // resting place.
+    animateSpread(0, 1150);
+    animateCurl(0, 800, 420);
+  }
+
+  // Route a click that landed under the virtual cursor to DOM UI (sidebar
+  // or theme toggle). Returns true if the click was handled there.
+  function dispatchUiClick() {
+    // elementsFromPoint walks through overlapping elements top→bottom; the
+    // fake cursor itself is pointer-events: none so it won't intercept.
+    const stack = document.elementsFromPoint(vx, vy);
+    for (const hit of stack) {
+      if (hit === fakeCursor) continue;
+      if (themeToggleEl.contains(hit)) { themeToggleEl.click(); return true; }
+      if (sidebarToggleEl.contains(hit)) { sidebarToggleEl.click(); return true; }
+      if (sidebarEl.contains(hit)) {
+        const label = hit.closest('label');
+        if (label) {
+          const input = label.querySelector('input[type="checkbox"]');
+          if (input) input.click();
+          return true;
+        }
+        if (hit.tagName === 'INPUT' || hit.tagName === 'TEXTAREA') {
+          hit.focus();
+          return true;
+        }
+        if (hit.tagName === 'BUTTON') { hit.click(); return true; }
+        return true; // consume stray clicks inside sidebar chrome
+      }
+      // anything below body/html/canvas is considered "world" — stop.
+      if (hit === document.body || hit === document.documentElement) return false;
+      if (hit === renderer.domElement) return false;
+    }
+    return false;
+  }
+
+  // Pointer Events handle mouse + pen. Touch goes through dedicated
+  // touchstart/move/end listeners below because mobile browsers have
+  // various bugs and CORS-y quirks mixing pointer events with
+  // touch-action: none.
+  window.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') return; // touchstart handles this
+
+    // === Mouse / pen path ===
+    if (!document.pointerLockElement) {
+      vx = e.clientX;
+      vy = e.clientY;
+      renderFakeCursor();
+    }
+    requestLock();
+
+    if (dispatchUiClick()) return;
+
+    if (stickers.length === 0) return;
+    if (phase !== 'idle' && phase !== 'held') return;
+
+    if (phase === 'held') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      beginPutdown();
+      return;
+    }
+
+    const sticker = raycastStickerAt(vx, vy);
+    if (!sticker) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+    beginPickup(sticker, vx, vy);
+  }, true);
+
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return; // touchmove handles this
+
+    // === Mouse / pen path ===
+    // During the peel/put-down animations, the tick loop owns vx/vy so
+    // the fake cursor stays locked to the animated peel edge. Ignore
+    // pointermove input until the animation resolves.
+    if (phase === 'picking-up' || phase === 'putting-down') {
+      fakeCursor.classList.add('visible');
+      return;
+    }
+    if (document.pointerLockElement) {
+      vx += e.movementX || 0;
+      vy += e.movementY || 0;
+      clampVirtual();
+    } else {
+      vx = e.clientX;
+      vy = e.clientY;
+    }
+    renderFakeCursor();
+    fakeCursor.classList.add('visible');
+
+    const wp = worldFromScreen(vx, vy);
+    pointerWorld.set(wp.x, wp.y);
+
+    if (phase === 'held') {
+      heldSince = -1;
+      targetAnchor.set(
+        wp.x + heldWorldDelta.x - heldGrabOffset.x,
+        wp.y + heldWorldDelta.y - heldGrabOffset.y
+      );
+      return;
+    }
+    if (phase !== 'idle') return;
+    const inRect = (el) => {
+      const r = el.getBoundingClientRect();
+      return vx >= r.left && vx <= r.right && vy >= r.top && vy <= r.bottom;
+    };
+    const overUi = inRect(sidebarEl) || inRect(sidebarToggleEl) || inRect(themeToggleEl);
+    setFakeCursor(overUi ? 'arrow' : 'open');
+  });
+
+  // --- Touch path (mobile): drag gesture ----------------------------------
+  let touchId = null;
+
+  function isUiTarget(target) {
+    return target && (
+      sidebarEl.contains(target) ||
+      themeToggleEl.contains(target) ||
+      sidebarToggleEl.contains(target)
+    );
+  }
+
+  window.addEventListener('touchstart', (e) => {
+    document.body.classList.add('touch');
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+
+    // Defer to the browser for taps that land on the sidebar / toggles.
+    const ui = document.elementFromPoint(t.clientX, t.clientY);
+    if (isUiTarget(ui)) return;
+
+    if (phase !== 'idle' && phase !== 'held') return;
+
+    vx = t.clientX;
+    vy = t.clientY;
+
+    if (phase === 'held') {
+      if (e.cancelable) e.preventDefault();
+      beginPutdown();
+      return;
+    }
+
+    const sticker = raycastStickerAt(vx, vy);
+    if (!sticker) return;
+    if (e.cancelable) e.preventDefault();
+    touchId = t.identifier;
+    const wp = worldFromScreen(vx, vy);
+    pointerWorld.set(wp.x, wp.y);
+    beginPickup(sticker, vx, vy);
+  }, { passive: false });
+
+  window.addEventListener('touchmove', (e) => {
+    if (touchId === null) return;
+    if (phase !== 'picking-up' && phase !== 'held') return;
+    for (let i = 0; i < e.touches.length; i++) {
+      const t = e.touches[i];
+      if (t.identifier !== touchId) continue;
+      if (e.cancelable) e.preventDefault();
+      vx = t.clientX;
+      vy = t.clientY;
+      const wp = worldFromScreen(vx, vy);
+      pointerWorld.set(wp.x, wp.y);
+      if (phase === 'held') {
+        heldSince = -1;
+        targetAnchor.set(
+          wp.x + heldWorldDelta.x - heldGrabOffset.x,
+          wp.y + heldWorldDelta.y - heldGrabOffset.y
+        );
+      }
+      return;
+    }
+  }, { passive: false });
+
+  function touchEnded(e) {
+    if (touchId === null) return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === touchId) {
+        touchId = null;
+        if (phase === 'picking-up' || phase === 'held') beginPutdown();
+        return;
+      }
+    }
+  }
+  window.addEventListener('touchend', touchEnded, { passive: false });
+  window.addEventListener('touchcancel', touchEnded, { passive: false });
+
+  // If the user hits Escape, Pointer Lock exits. Keep the virtual cursor
+  // where it is — the next pointermove will snap it to the OS cursor,
+  // but the next click re-engages lock.
+  document.addEventListener('pointerlockchange', () => { /* no-op */ });
+
+  // Wheel events go to the DOM element under the OS cursor, but the OS
+  // cursor is locked. Forward wheel input to whatever the virtual cursor
+  // is hovering so the sidebar list still scrolls.
+  window.addEventListener('wheel', (e) => {
+    const hit = document.elementFromPoint(vx, vy);
+    if (hit && sidebarEl.contains(hit)) {
+      const scroller = document.getElementById('sticker-list');
+      scroller.scrollTop += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // --- theme toggle ------------------------------------------------------
+  const themeToggle = document.getElementById('theme-toggle');
+  themeToggle.addEventListener('click', () => {
+    document.body.classList.toggle('light');
+  });
+
+  // signup form + layout removed — playground mode
+
+  // --- resize ------------------------------------------------------------
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h);
+    const aspect = w / h;
+    camera.left = -aspect; camera.right = aspect;
+    camera.top = 1; camera.bottom = -1;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // --- loop --------------------------------------------------------------
+  function stepAnim(anim, now, target) {
+    if (anim.start < 0) return target;
+    if (now < anim.start) return target; // scheduled delay not yet elapsed
+    const t = Math.max(0, Math.min(1, (now - anim.start) / anim.duration));
+    const v = anim.from + (anim.to - anim.from) * easeInOutCubic(t);
+    if (t >= 1) anim.start = -1;
+    return v;
+  }
+
+  function tick() {
+    requestAnimationFrame(tick);
+
+    const now = performance.now();
+    curl   = stepAnim(curlAnim,   now, curl);
+    spread = stepAnim(spreadAnim, now, spread);
+
+    // phase transitions — only check when both tracks have come to rest
+    if (phase === 'picking-up' && animationsIdle() && activeSticker) {
+      phase = 'held';
+      heldSince = performance.now();
+      const u = activeSticker.mesh.material.uniforms;
+      const offLocal = peelCornerAt(CURL_MAX, 1, u.uHingeDir.value.x, u.uHingeDir.value.y,
+                                    u.uPlaneHalf.value, u.uRadius.value, u.uTargetZ.value);
+      const pickedScaleAtHeld = 1.06;
+      heldGrabOffset.set(offLocal.x * pickedScaleAtHeld, offLocal.y * pickedScaleAtHeld);
+
+      const peelWx = meshAnchor.x + heldGrabOffset.x;
+      const peelWy = meshAnchor.y + heldGrabOffset.y;
+
+      // On desktop, snap the virtual cursor to the peel tip the tick
+      // loop just drew it at, so the fake cursor stays visually pinned
+      // to the peel edge. On touch the finger stays put and we preserve
+      // the offset via heldWorldDelta instead.
+      const isTouch = document.body.classList.contains('touch');
+      if (!isTouch) {
+        const peelScr = worldToScreen(peelWx, peelWy);
+        vx = peelScr.x;
+        vy = peelScr.y;
+        clampVirtual();
+        renderFakeCursor();
+        const wp = worldFromScreen(vx, vy);
+        pointerWorld.set(wp.x, wp.y);
+      }
+
+      // delta = (peel tip) - (pointer world). For mouse this is 0; for
+      // touch it captures the gap between the finger and the peel tip.
+      heldWorldDelta.set(peelWx - pointerWorld.x, peelWy - pointerWorld.y);
+      targetAnchor.copy(meshAnchor);
+    } else if (phase === 'putting-down' && animationsIdle()) {
+      phase = 'idle';
+      // keep renderOrder — the last-placed sticker stays on top of all others
+      activeSticker = null;
+    }
+
+    // auto-put-down: if the sticker has been sitting in held state
+    // without interaction for HELD_AUTO_MS, release it wherever it is.
+    if (phase === 'held' && heldSince > 0 && now - heldSince > HELD_AUTO_MS) {
+      heldSince = -1;
+      phase = 'putting-down';
+      animateSpread(0, 1150);
+      animateCurl(0, 800, 420);
+    }
+
+    // Lift-derived signals mostly follow the spread track — shadow only
+    // really makes sense once the sticker has actually lifted. Drag is
+    // gated to the held state so the sticker stays put during the peel
+    // animation and only starts tracking the pointer once it's done.
+    const liftK = smoothstep01(spread, 0.05, 0.95);
+    // Only move while fully peeled — during 'picking-up' the sticker stays
+    // put so the unstick animation plays at the click location.
+    const dragK = phase === 'held' ? 1 : 0;
+    const pickedScale = 1 + liftK * 0.06;
+
+    if (activeSticker) {
+      const front = activeSticker.mesh;
+      const back  = activeSticker.backMesh;
+      front.material.uniforms.uCurl.value   = curl;
+      front.material.uniforms.uSpread.value = spread;
+      back.material.uniforms.uCurl.value    = curl;
+      back.material.uniforms.uSpread.value  = spread;
+
+      meshAnchor.lerp(targetAnchor, 0.3 * dragK);
+      front.position.set(meshAnchor.x, meshAnchor.y, 0);
+      back.position.set(meshAnchor.x, meshAnchor.y, 0);
+      front.scale.set(pickedScale, pickedScale, 1);
+      back.scale.set(pickedScale, pickedScale, 1);
+
+      // Fake cursor: drive vx/vy (the single source of truth for the
+      // cursor's screen position) from the animated peel tip during both
+      // 'picking-up' and 'putting-down'. During 'held', pointermove owns
+      // vx/vy so we skip this block. The click-point blend is applied to
+      // picking-up only (it's where the click started); on put-down the
+      // cursor just rides the peel edge back down to its resting place.
+      // Touch devices have no fake cursor — pointermove writes vx/vy from
+      // the finger position, and tick loop must not clobber it.
+      const isTouchMode = document.body.classList.contains('touch');
+      if (!isTouchMode && (phase === 'picking-up' || phase === 'putting-down')) {
+        const u = front.material.uniforms;
+        const peel = peelCornerAt(curl, spread, u.uHingeDir.value.x, u.uHingeDir.value.y,
+                                  u.uPlaneHalf.value, u.uRadius.value, u.uTargetZ.value);
+        const wx = meshAnchor.x + peel.x * pickedScale;
+        const wy = meshAnchor.y + peel.y * pickedScale;
+        const scr = worldToScreen(wx, wy);
+        let fx = scr.x;
+        let fy = scr.y;
+        if (phase === 'picking-up') {
+          const invBlend = 1 - Math.min(1, curl / CURL_MAX);
+          fx += pickupClickDelta.x * invBlend;
+          fy += pickupClickDelta.y * invBlend;
+        }
+        vx = fx;
+        vy = fy;
+        renderFakeCursor();
+      }
+    }
+    // shadow tick update disabled
+    // if (shadowMesh) {
+    //   shadowMesh.material.uniforms.uLift.value = liftK;
+    //   const off = liftK * 0.07;
+    //   shadowMesh.position.set(
+    //     meshAnchor.x + off * 0.25,
+    //     meshAnchor.y - off,
+    //     -0.01
+    //   );
+    //   shadowMesh.scale.set(pickedScale, pickedScale, 1);
+    // }
+    renderer.render(scene, camera);
+  }
+  tick();
+})();
+</script>
+</body>
+</html>
